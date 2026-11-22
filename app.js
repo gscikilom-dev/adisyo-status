@@ -1,12 +1,13 @@
 /* adisyo Systemstatus
-   Daten: status.json (GitHub Action holt alle 5 Min. von UptimeRobot und legt sie im Zweig "data" ab).
-   Nur wenn die Datei fehlt oder älter als 30 Min. ist, fragt die Seite UptimeRobot einmal direkt. */
+   Daten (22.11.2026): zuerst https://adisyo.de/status.json, das der Server alle 5 Min. von UptimeRobot holt. Ist sie nicht erreichbar
+   (dann ist meist der Server selbst gestört) oder älter als 15 Min., die status.json der GitHub Action (läuft nur alle paar Stunden),
+   und wenn auch die veraltet ist, fragt die Seite UptimeRobot einmal direkt. So zeigt die Seite nie lange einen alten Stand. */
 (function () {
   'use strict';
   var KEY = 'ur3836394-eaef0bbf73b88b4358f99c89';
-  var DATA_URL = 'https://raw.githubusercontent.com/gscikilom-dev/adisyo-status/data/status.json';
+  var SOURCES = ['https://adisyo.de/status.json', 'https://raw.githubusercontent.com/gscikilom-dev/adisyo-status/data/status.json'];
   var SETUP = 3600;            /* erste Stunde nach dem Anlegen eines Checks = Einrichtung */
-  var STALE = 30 * 60;         /* status.json gilt als veraltet nach 30 Min. */
+  var STALE = 15 * 60;         /* status.json gilt als veraltet nach 15 Min. (Server schreibt alle 5 Min.) */
   var POLL = 120000;           /* alle 2 Min. neu laden, nur wenn der Tab sichtbar ist */
 
   var ICON = {
@@ -119,10 +120,14 @@
       .then(function (r) { return r.json(); })
       .then(function (j) { if (j.stat !== 'ok') throw 0; return { generated: Math.floor(Date.now() / 1000), days: days, monitors: j.monitors }; });
   }
-  function load() {
-    fetch(DATA_URL + '?t=' + Math.floor(Date.now() / 60000), { cache: 'no-store' })
+  function fromFile(url) {
+    return fetch(url + '?t=' + Math.floor(Date.now() / 60000), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
-      .then(function (j) { if (!j.monitors || Date.now() / 1000 - j.generated > STALE) throw 0; return j; })
+      .then(function (j) { if (!j.monitors || Date.now() / 1000 - j.generated > STALE) throw 0; return j; });
+  }
+  function load() {
+    fromFile(SOURCES[0])
+      .catch(function () { return fromFile(SOURCES[1]); })
       .catch(direct)
       .then(function (j) { data = j; failed = false; backoff = POLL; $('err').classList.remove('on'); render(); })
       .catch(function () { failed = true; backoff = Math.min(backoff * 2, 15 * 60000); $('err').classList.add('on'); render(); })
